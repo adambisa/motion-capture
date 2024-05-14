@@ -8,3 +8,5 @@ on the **treshdelta** image and then draw a rectangle on the same coordinates in
 I am able to find movement by reflecting light which shows as ligher - whiter pixels which I can track. 
 
 As of now it can track one moving object closest to the camera.
+
+## first run : pip install -r requirements.txt
