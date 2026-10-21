@@ -1,0 +1,9 @@
+This project downloads and uses the YOLOX-nano model weights
+(https://github.com/Megvii-BaseDetection/YOLOX), Copyright (c) 2021-2022 Megvii Inc.,
+licensed under the Apache License, Version 2.0:
+http://www.apache.org/licenses/LICENSE-2.0
+The weights are not included in this repository; they are fetched at build time.
+
+web/fonts/sometype-mono-latin.woff2 is Sometype Mono, designed by Ryoichi Tsunekawa.
+Copyright 2018 The Sometype Mono Project Authors (https://github.com/googlefonts/sometype-mono),
+licensed under the SIL Open Font License 1.1: https://openfontlicense.org

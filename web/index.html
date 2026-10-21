@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Motion Capture</title>
+    <link rel="preload" href="fonts/sometype-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="style.css" />
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <main class="demo">
+      <header class="bar">
+        <span>Motion capture / v2</span>
+        <span id="status" aria-live="polite">Idle</span>
+      </header>
+
+      <div class="stage" id="stage">
+        <video id="video" playsinline muted></video>
+        <canvas id="overlay"></canvas>
+        <div class="cover" id="cover">
+          <button type="button" class="start" id="start">Start camera</button>
+          <p class="note" id="message">
+            Frames go to a small Python server, are processed in memory and never stored.
+          </p>
+        </div>
+      </div>
+
+      <section class="controls" aria-label="Detector settings">
+        <label>
+          <span>Sensitivity threshold <output id="threshold-out"></output></span>
+          <input type="range" id="threshold" min="5" max="100" value="25" />
+        </label>
+        <label>
+          <span>Minimum size <output id="min-area-out"></output></span>
+          <input type="range" id="min-area" min="100" max="5000" step="50" value="600" />
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="identify" />
+          <span>Identify objects <small>(YOLOX-nano)</small></span>
+        </label>
+        <button type="button" class="stop" id="stop" hidden>Stop</button>
+      </section>
+
+      <section class="log" aria-label="Motion events">
+        <h2>Events</h2>
+        <ol id="events"><li class="empty">Nothing yet.</li></ol>
+      </section>
+    </main>
+  </body>
+</html>

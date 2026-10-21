@@ -1,0 +1,16 @@
+{
+  "name": "motion-capture-web",
+  "private": true,
+  "description": "Dev tools only: lint and type-check the plain-JS client in web/.",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint web",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.13.0",
+    "globals": "17.13.0",
+    "typescript": "7.0.2"
+  }
+}

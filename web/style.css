@@ -1,0 +1,188 @@
+/* Sometype Mono (SIL Open Font License), served from here so no visitor data goes elsewhere. */
+@font-face {
+  font-family: 'Sometype Mono';
+  src: url('fonts/sometype-mono-latin.woff2') format('woff2');
+  font-weight: 400 700;
+  font-display: swap;
+}
+
+:root {
+  --ink: #0d0d0d;
+  --paper: #ecebe6;
+  --accent: #ff4a1c;
+  --muted: #8a8a85;
+  --rule: #3a3a38;
+  --mono: 'Sometype Mono', ui-monospace, Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--paper);
+  font: 13px/1.5 var(--mono);
+}
+
+.demo {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+#status.live {
+  color: var(--accent);
+}
+
+.stage {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border: 1.5px solid var(--paper);
+  background: #000;
+  overflow: hidden;
+}
+
+.stage video,
+.stage canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Selfie view: the video is mirrored here and the overlay maths mirrors to match. */
+.stage video {
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.cover {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+}
+
+.cover[hidden] {
+  display: none;
+}
+
+.note {
+  max-width: 34ch;
+  margin: 0;
+  color: var(--muted);
+}
+
+button {
+  font: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  border: 1.5px solid var(--paper);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 10px 18px;
+}
+
+button:hover,
+button:focus-visible {
+  background: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.stop {
+  justify-self: start;
+  background: transparent;
+  color: var(--paper);
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px 20px;
+  align-items: end;
+}
+
+.controls label {
+  display: grid;
+  gap: 6px;
+}
+
+.controls output {
+  color: var(--accent);
+}
+
+.toggle {
+  grid-auto-flow: column;
+  justify-content: start;
+  align-items: center;
+}
+
+.toggle small {
+  color: var(--muted);
+}
+
+input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+input[type='checkbox'] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+
+input:disabled + span {
+  color: var(--muted);
+}
+
+.log h2 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.log ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--rule);
+  max-height: 9.5em;
+  overflow-y: auto;
+}
+
+.log li {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.log .empty {
+  color: var(--muted);
+}
+
+.log time {
+  color: var(--muted);
+  margin-right: 1ch;
+}
