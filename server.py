@@ -33,7 +33,7 @@ log = logging.getLogger("motion.server")
 
 ROOT = Path(__file__).parent
 MAX_FRAME_BYTES = 256 * 1024
-MAX_FRAME_SIZE = (640, 480)  # the client sends 320 px wide; leave room, refuse the rest
+MAX_FRAME_SIDE = 640  # the client sends 320 px on the long side; leave room, refuse the rest
 MAX_SETTINGS_CHARS = 1024
 IDLE_SECONDS = 10.0
 PER_CLIENT = 2
@@ -103,8 +103,8 @@ def handle_frame(pipeline: Pipeline, data: bytes) -> Message:
     if len(data) > MAX_FRAME_BYTES:
         return error("too_large", "Frame too large.")
     size = jpeg_size(data)
-    if size is None or size[0] > MAX_FRAME_SIZE[0] or size[1] > MAX_FRAME_SIZE[1]:
-        return error("bad_frame", "Frames must be JPEGs of at most 640 x 480.")
+    if size is None or max(size) > MAX_FRAME_SIDE:  # either orientation: phones send portrait
+        return error("bad_frame", f"Frames must be JPEGs at most {MAX_FRAME_SIDE} px on a side.")
     frame = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
     if frame is None:
         return error("bad_frame", "Could not read that frame.")

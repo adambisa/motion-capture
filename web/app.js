@@ -18,7 +18,7 @@
  * @typedef {{ track: Track, capturedAt: number, display: Box | null }} Shown
  */
 
-const SEND_WIDTH = 320;
+const SEND_SIDE = 320; // long side of each frame sent, portrait or landscape
 const JPEG_QUALITY = 0.7;
 const MIN_FRAME_GAP_MS = 100; // at most ~10 frames a second
 const MAX_EVENTS = 30;
@@ -70,11 +70,12 @@ const frameCanvas = document.createElement('canvas');
 /** @type {{ ws: WebSocket | null, stream: MediaStream | null, inFlight: boolean,
  *           lastSend: number, capturedAt: number, latency: number, results: number[],
  *           timer: number, raf: number, lastTick: number, frame: { w: number, h: number },
- *           shown: Map<number, Shown>, touched: boolean }} */
+ *           shown: Map<number, Shown>, touched: boolean, errors: number }} */
 const state = {
   ws: null, stream: null, inFlight: false, lastSend: 0, capturedAt: 0, latency: 0,
   results: [], timer: 0, raf: 0, lastTick: 0, frame: { w: 1, h: 1 }, shown: new Map(),
   touched: false,
+  errors: 0,
 };
 
 // ---- session ---------------------------------------------------------------
@@ -106,7 +107,7 @@ async function start() {
     const msg = /** @type {ServerMessage} */ (JSON.parse(String(event.data)));
     if (msg.type === 'hello') onHello(msg);
     else if (msg.type === 'result') onResult(msg);
-    else if (msg.type === 'error') scheduleNextFrame();
+    else if (msg.type === 'error') onError(msg);
     else closingNote = msg.message;
   };
   ws.onclose = () => {
@@ -172,6 +173,7 @@ function onResult(result) {
     true,
   );
 
+  state.errors = 0;
   state.frame = { w: result.w, h: result.h };
   const ids = new Set(result.tracks.map((t) => t.id));
   for (const id of state.shown.keys()) if (!ids.has(id)) state.shown.delete(id);
@@ -180,6 +182,17 @@ function onResult(result) {
     state.shown.set(track.id, { track, capturedAt: state.capturedAt, display: shown?.display ?? null });
   }
   result.events.forEach(addEvent);
+  scheduleNextFrame();
+}
+
+/**
+ * A frame the server could not use. One is noise; a run of them means every frame
+ * is failing, so say so on the page rather than keep sending into the void.
+ * @param {ErrorMessage} msg
+ */
+function onError(msg) {
+  state.errors += 1;
+  if (state.errors >= 5) setStatus(`Server: ${msg.message}`, false);
   scheduleNextFrame();
 }
 
@@ -193,8 +206,9 @@ function scheduleNextFrame() {
 function sendFrame() {
   const ws = state.ws;
   if (!ws || ws.readyState !== WebSocket.OPEN || state.inFlight || !ui.video.videoWidth) return;
-  frameCanvas.width = SEND_WIDTH;
-  frameCanvas.height = Math.round((SEND_WIDTH * ui.video.videoHeight) / ui.video.videoWidth);
+  const scale = SEND_SIDE / Math.max(ui.video.videoWidth, ui.video.videoHeight);
+  frameCanvas.width = Math.round(ui.video.videoWidth * scale);
+  frameCanvas.height = Math.round(ui.video.videoHeight * scale);
   frameCanvas.getContext('2d')?.drawImage(ui.video, 0, 0, frameCanvas.width, frameCanvas.height);
   state.capturedAt = performance.now();
   state.inFlight = true;

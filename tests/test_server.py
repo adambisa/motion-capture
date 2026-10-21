@@ -145,3 +145,14 @@ def test_one_visitor_cannot_take_every_slot() -> None:
         b.receive_json()
         with c.websocket_connect("/ws", headers=ORIGIN) as third:
             assert third.receive_json()["type"] == "busy"
+
+
+def test_portrait_camera_frames_are_processed() -> None:
+    # Phones and rotated webcams give portrait video: 320 px wide is 569 px tall.
+    portrait = np.full((569, 320, 3), 180, np.uint8)
+    with client().websocket_connect("/ws", headers=ORIGIN) as ws:
+        ws.receive_json()
+        ws.send_bytes(jpeg(portrait))
+        reply = ws.receive_json()
+    assert reply["type"] == "result"
+    assert (reply["w"], reply["h"]) == (320, 569)
