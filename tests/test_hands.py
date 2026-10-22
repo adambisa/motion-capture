@@ -50,6 +50,14 @@ def test_missing_model_means_no_hands(tmp_path: Path) -> None:
     assert HandDetector.load(tmp_path / "hand.onnx") is None
 
 
+def test_portrait_frames_use_the_portrait_canvas() -> None:
+    detector = HandDetector.load(Path(__file__).parent / "fixtures" / "hand_tiny.onnx")
+    assert detector is not None
+    assert detector.canvases == [(192, 256), (256, 192)]  # hand_tiny_portrait.onnx found
+    assert detector.canvas_for(np.zeros((320, 180, 3), np.uint8)) == (256, 192)
+    assert detector.canvas_for(np.zeros((180, 320, 3), np.uint8)) == (192, 256)
+
+
 def test_tiny_fixture_model_loads_and_runs_on_any_frame_shape() -> None:
     detector = HandDetector.load(Path(__file__).parent / "fixtures" / "hand_tiny.onnx")
     assert detector is not None

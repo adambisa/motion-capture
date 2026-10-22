@@ -34,3 +34,11 @@ Short notes on what was tried and what happened, in order. Numbers are from
   intervals overlap). A portrait frame is letterboxed into the landscape canvas at 0.6 scale,
   shrinking hands. Next: a portrait export from the same weights, then numbers-only logging from a
   live session. Ablations and the one-time test-set evaluation not run yet.
+
+## 2026-10-22 · Portrait canvas (no retraining)
+
+HandNet is fully convolutional, so the same weights were exported a second time on a
+portrait canvas (256 tall x 192 wide), and the detector now picks the canvas matching
+each frame. On the 2,438 portrait val images: AP50 0.658 [0.62-0.70] -> **0.766 [0.74-0.80]**,
+AP50:95 0.241 -> 0.309, precision 0.92 -> 0.94, recall 0.47 -> 0.58, same 3.5 ms.
+Squeezing portrait frames into the landscape canvas was costing a lot.

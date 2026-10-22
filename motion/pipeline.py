@@ -4,6 +4,8 @@ Pipeline:      background -> blobs -> tracks -> colour, labels, events (any moti
 HandPipeline:  HandNet -> tracks -> events (hands only)
 """
 
+import logging
+import os
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -143,6 +145,9 @@ class HandDetector(Protocol):
     def detect(self, frame: Image, threshold: float | None = None) -> list[HandBox]: ...
 
 
+stats_log = logging.getLogger("uvicorn.error")
+
+
 class HandPipeline:
     """Hands only: HandNet finds them, the Kalman tracker follows them.
 
@@ -150,6 +155,9 @@ class HandPipeline:
     only `keep` to continue one, so a hand that dims for a frame keeps its ID
     while a one-off false detection never becomes a track. A track also has to
     be seen twice before it is shown. Hands never get a colour.
+
+    HAND_STATS=1 logs numbers per frame (sizes, scores, counts; never images)
+    to diagnose misses and flicker from a live session.
     """
 
     MIN_AGE = 2
@@ -175,6 +183,7 @@ class HandPipeline:
         )
         self._events = MotionEvents()
         self._shape: tuple[int, ...] | None = None
+        self.stats = os.environ.get("HAND_STATS") == "1"
 
     def process(self, frame: Image, now: float) -> FrameResult:
         if frame.shape != self._shape:
@@ -189,5 +198,14 @@ class HandPipeline:
         shown = [t for t in tracks if t.age >= self.MIN_AGE]
         for t in shown:
             t.label, t.colour = "hand", None
+        if self.stats:
+            stats_log.info(
+                "HAND frame=%dx%d keep=%d spawn=%d scores=%s sizes=%s tracks=%d shown=%d",
+                frame.shape[1], frame.shape[0], len(hands),
+                sum(h.score >= c.spawn for h in hands),
+                [round(h.score, 2) for h in hands][:4],
+                [max(h.box[2], h.box[3]) for h in hands][:4],
+                len(tracks), len(shown),
+            )  # fmt: skip
         event = self._events.update(bool(shown), now)
         return FrameResult(frame.shape[1], frame.shape[0], shown, [event] if event else [])

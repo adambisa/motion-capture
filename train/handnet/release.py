@@ -2,7 +2,8 @@
 
   uv run python -m handnet.release runs/base/best.pt
 
-1. Export the EMA weights to ONNX; check cv2.dnn agrees with torch.
+1. Export the EMA weights to ONNX, once on a landscape canvas (hand.onnx) and
+   once on a portrait one (hand_portrait.onnx); check cv2.dnn agrees with torch.
 2. Pick the two tracking thresholds on val (never test):
    spawn = lowest score at which val precision (IoU 0.5) reaches 0.90,
    keep  = half of that, enough to continue a track but not to start one.
@@ -90,6 +91,9 @@ def main() -> None:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     export(model, args.out, cfg["height"], cfg["input_width"])
     diff = parity(model, args.out, cfg["height"], cfg["input_width"])
+    portrait = args.out.with_name(f"{args.out.stem}_portrait{args.out.suffix}")
+    export(model, portrait, cfg["input_width"], cfg["height"])  # same weights, tall canvas
+    diff = max(diff, parity(model, portrait, cfg["input_width"], cfg["height"]))
     if diff > 1e-3:
         raise SystemExit(f"cv2.dnn disagrees with torch by {diff:.2e}")
 

@@ -104,9 +104,21 @@ def decode(
 
 
 class HandDetector:
-    def __init__(self, net: cv2.dnn.Net, contract: Contract) -> None:
-        self._net = net
+    """HandNet with one network per canvas orientation.
+
+    The weights are fully convolutional, so the same training runs on a
+    landscape canvas (hand.onnx) and, if exported, a portrait one
+    (hand_portrait.onnx). Each frame uses the canvas matching its orientation,
+    so a phone's portrait frame is not shrunk into a landscape box.
+    """
+
+    def __init__(self, nets: dict[tuple[int, int], cv2.dnn.Net], contract: Contract) -> None:
+        self._nets = nets  # (canvas height, canvas width) -> network
         self.contract = contract
+
+    @property
+    def canvases(self) -> list[tuple[int, int]]:
+        return sorted(self._nets)
 
     @classmethod
     def load(cls, onnx: Path) -> "HandDetector | None":
@@ -116,25 +128,42 @@ class HandDetector:
             log.warning("No hand model at %s; hand tracking is off.", onnx)
             return None
         try:
-            detector = cls(cv2.dnn.readNetFromONNX(str(onnx)), Contract.read(meta))
-            c = detector.contract
-            shape = detector.forward(np.full((c.height, c.width, 3), PAD, np.uint8)).shape
+            c = Contract.read(meta)
+            files = {(c.height, c.width): onnx}
+            portrait = onnx.with_name(f"{onnx.stem}_portrait{onnx.suffix}")
+            if portrait.is_file():
+                files[(c.width, c.height)] = portrait
+            detector = cls({size: cv2.dnn.readNetFromONNX(str(f)) for size, f in files.items()}, c)
+            for h, w in files:
+                shape = detector.forward(np.full((h, w, 3), PAD, np.uint8)).shape
+                expected = (1, CHANNELS, h // STRIDE, w // STRIDE)
+                if shape != expected:
+                    log.warning("Hand model output %s, expected %s; hands off.", shape, expected)
+                    return None
         except (cv2.error, ValueError, TypeError):
             log.exception("Could not load hand model %s; hand tracking is off.", onnx)
-            return None
-        expected = (1, CHANNELS, c.height // STRIDE, c.width // STRIDE)
-        if shape != expected:
-            log.warning("Hand model output %s, expected %s; hand tracking is off.", shape, expected)
             return None
         return detector
 
     def forward(self, canvas: Image) -> NDArray[np.float32]:
-        self._net.setInput(to_blob(canvas))
-        return np.asarray(self._net.forward(), dtype=np.float32)
+        net = self._nets[(canvas.shape[0], canvas.shape[1])]
+        net.setInput(to_blob(canvas))
+        return np.asarray(net.forward(), dtype=np.float32)
+
+    def canvas_for(self, frame: Image) -> tuple[int, int]:
+        """Portrait canvas for portrait frames when one was exported, else landscape."""
+        c = self.contract
+        tall = frame.shape[0] > frame.shape[1]
+        return (
+            (c.width, c.height)
+            if tall and (c.width, c.height) in self._nets
+            else (c.height, c.width)
+        )
 
     def detect(self, frame: Image, threshold: float | None = None) -> list[HandBox]:
         c = self.contract
-        canvas, ratio = letterbox(frame, c.height, c.width)
+        height, width = self.canvas_for(frame)
+        canvas, ratio = letterbox(frame, height, width)
         bounds = (frame.shape[1], frame.shape[0])
         return decode(
             self.forward(canvas), ratio, bounds, c.keep if threshold is None else threshold
