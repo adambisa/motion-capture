@@ -43,22 +43,22 @@ def _measurement(box: Box) -> Vector:
     return np.array([[x + w / 2], [y + h / 2], [w], [h]], dtype=np.float32)
 
 
-def _new_filter(box: Box) -> cv2.KalmanFilter:
+def _new_filter(box: Box, measurement_noise: NDArray[np.float32]) -> cv2.KalmanFilter:
     kf = cv2.KalmanFilter(STATE, MEASURED)
     kf.measurementMatrix = np.eye(MEASURED, STATE, dtype=np.float32)
-    kf.measurementNoiseCov = MEASUREMENT_NOISE.copy()
+    kf.measurementNoiseCov = measurement_noise.copy()
     kf.statePost = np.vstack([_measurement(box), np.zeros((4, 1), np.float32)])
     # Sure about where it is, clueless about how fast it is going.
     kf.errorCovPost = np.diag([9, 9, 25, 25, 1e4, 1e4, 1e4, 1e4]).astype(np.float32)
     return kf
 
 
-def _predict(kf: cv2.KalmanFilter, dt: float) -> None:
+def _predict(kf: cv2.KalmanFilter, dt: float, process_noise: NDArray[np.float32]) -> None:
     """Constant velocity: position += velocity * dt."""
     transition = np.eye(STATE, dtype=np.float32)
     transition[:4, 4:] = np.eye(4, dtype=np.float32) * dt
     kf.transitionMatrix = transition
-    kf.processNoiseCov = PROCESS_NOISE * dt
+    kf.processNoiseCov = process_noise * dt
     kf.predict()  # OpenCV also copies the prediction into statePost
 
 
@@ -98,12 +98,24 @@ class Tracker:
     Every (track, blob) pair is ranked by distance and accepted nearest-first,
     so two objects passing close by keep their own IDs. A track that loses
     its blob coasts on its prediction for up to max_missed frames, then is dropped.
+
+    The noise matrices default to values tuned for motion blobs; the hand
+    pipeline passes ones measured from its detector.
     """
 
-    def __init__(self, max_missed: int = 8, max_dist: float = 60.0, trail_len: int = 20) -> None:
+    def __init__(
+        self,
+        max_missed: int = 8,
+        max_dist: float = 60.0,
+        trail_len: int = 20,
+        measurement_noise: NDArray[np.float32] = MEASUREMENT_NOISE,
+        process_noise: NDArray[np.float32] = PROCESS_NOISE,
+    ) -> None:
         self.max_missed = max_missed
         self.max_dist = max_dist
         self.trail_len = trail_len
+        self.measurement_noise = measurement_noise
+        self.process_noise = process_noise
         self._tracks: dict[int, Track] = {}
         self._next_id = 1
         self._last: float | None = None
@@ -118,17 +130,23 @@ class Tracker:
         self._last = None
 
     def update(
-        self, boxes: Sequence[Box], now: float, bounds: tuple[int, int] | None = None
+        self,
+        boxes: Sequence[Box],
+        now: float,
+        bounds: tuple[int, int] | None = None,
+        can_start: Sequence[bool] | None = None,
     ) -> list[Track]:
         """Match this frame's boxes to tracks and return the visible tracks.
 
         `now` is in seconds; `bounds` is the frame's (width, height) to clip boxes to.
+        `can_start[i]` False means box i may continue a track but not start one
+        (a low-confidence detection: enough to keep a hand, not to invent one).
         """
         # Frames arrive at an uneven rate, so the filter steps by real elapsed time.
         dt = 0.1 if self._last is None else min(max(now - self._last, 1 / 60), 0.5)
         self._last = now
         for track in self._tracks.values():
-            _predict(track.kf, dt)
+            _predict(track.kf, dt, self.process_noise)
 
         pairs: list[tuple[float, int, int]] = []
         for track in self._tracks.values():
@@ -165,11 +183,10 @@ class Tracker:
                 track.sync(bounds)  # coast on the prediction
 
         for i, box in enumerate(boxes):
-            if i in matched_boxes:
+            if i in matched_boxes or (can_start is not None and not can_start[i]):
                 continue
-            track = Track(
-                self._next_id, box, deque([centroid(box)], maxlen=self.trail_len), _new_filter(box)
-            )
+            trail = deque([centroid(box)], maxlen=self.trail_len)
+            track = Track(self._next_id, box, trail, _new_filter(box, self.measurement_noise))
             track.sync(bounds)
             self._tracks[track.id] = track
             self._next_id += 1

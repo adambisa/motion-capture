@@ -1,0 +1,7 @@
+{
+  "height": 192,
+  "width": 256,
+  "spawn": 0.5,
+  "keep": 0.25,
+  "note": "untrained, width 0.25: a shape-correct stand-in for tests, finds nothing"
+}

@@ -17,7 +17,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 from urllib.parse import urlsplit
 
 import cv2
@@ -26,8 +26,10 @@ from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import RequestResponseEndpoint
 
+from motion.common import Image
+from motion.hands import HandDetector
 from motion.objects import YoloxLabeller
-from motion.pipeline import MIN_AREA_RANGE, THRESHOLD_RANGE, FrameResult, Pipeline
+from motion.pipeline import MIN_AREA_RANGE, THRESHOLD_RANGE, FrameResult, HandPipeline, Pipeline
 
 log = logging.getLogger("motion.server")
 
@@ -98,8 +100,29 @@ def jpeg_size(data: bytes) -> tuple[int, int] | None:
     return None
 
 
-def handle_frame(pipeline: Pipeline, data: bytes) -> Message:
-    """Decode one JPEG and run it through the pipeline. Runs in a worker thread."""
+class Engine(Protocol):
+    def process(self, frame: Image, now: float) -> FrameResult: ...
+
+
+class Session:
+    """One visitor's engines, motion (any movement) and/or hands, and which one runs."""
+
+    def __init__(self, engines: dict[str, Engine], active: str) -> None:
+        self.engines = engines
+        self.active = active
+
+    @property
+    def engine(self) -> Engine:
+        return self.engines[self.active]
+
+    @property
+    def motion(self) -> Pipeline | None:
+        engine = self.engines.get("motion")
+        return engine if isinstance(engine, Pipeline) else None
+
+
+def handle_frame(pipeline: Engine, data: bytes) -> Message:
+    """Decode one JPEG and run it through the active engine. Runs in a worker thread."""
     if len(data) > MAX_FRAME_BYTES:
         return error("too_large", "Frame too large.")
     size = jpeg_size(data)
@@ -115,8 +138,8 @@ def handle_frame(pipeline: Pipeline, data: bytes) -> Message:
         return error("internal", "Something went wrong on that frame.")
 
 
-def apply_settings(pipeline: Pipeline, text: str) -> Message | None:
-    """Merge a settings message into the pipeline. Returns an error, or None when fine."""
+def apply_settings(session: Session, text: str) -> Message | None:
+    """Merge a settings message into the session. Returns an error, or None when fine."""
     if len(text) > MAX_SETTINGS_CHARS:
         return error("bad_settings", "Settings message too long.")
     try:
@@ -126,14 +149,20 @@ def apply_settings(pipeline: Pipeline, text: str) -> Message | None:
     if not isinstance(msg, dict) or msg.get("type") != "settings":
         return error("bad_settings", "Unknown message.")
     threshold, min_area, identify = msg.get("threshold"), msg.get("minArea"), msg.get("identify")
+    detector = msg.get("detector")
     numbers_ok = all(
         v is None or (isinstance(v, int) and not isinstance(v, bool)) for v in (threshold, min_area)
     )
     if not numbers_ok or not (identify is None or isinstance(identify, bool)):
         return error("bad_settings", "Settings have the wrong types.")
-    pipeline.settings = pipeline.settings.merged(
-        threshold=threshold, min_area=min_area, identify=identify
-    )
+    if detector is not None and detector not in session.engines:
+        return error("bad_settings", f"Detector must be one of {sorted(session.engines)}.")
+    if detector is not None:
+        session.active = detector
+    if session.motion is not None:
+        session.motion.settings = session.motion.settings.merged(
+            threshold=threshold, min_area=min_area, identify=identify
+        )
     return None
 
 
@@ -190,22 +219,35 @@ def create_app(
     max_sessions: int | None = None,
     session_seconds: float | None = None,
     model_path: Path | None = None,
+    hand_model_path: Path | None = None,
+    mode: str | None = None,
     static_dir: Path = ROOT / "web",
 ) -> FastAPI:
     """Build the app. Unset arguments come from the environment:
 
+    MOTION_MODE      "full" (motion and hands, YOLOX labels) or "hands" (the cheap
+                     website demo: hands only, short sessions, no YOLOX)
     ALLOWED_ORIGINS  comma-separated sites that may embed the demo (the portfolio)
-    MAX_SESSIONS     concurrent demo sessions (4)
-    SESSION_SECONDS  length of one session (180)
+    MAX_SESSIONS     concurrent sessions (full 4, hands 2)
+    SESSION_SECONDS  length of one session (full 180, hands 60)
     MOTION_MODEL     path to yolox_nano.onnx (models/yolox_nano.onnx)
+    HAND_MODEL       path to the HandNet .onnx, with its .json beside it (weights/hand.onnx)
     """
     env = os.environ
+    mode = mode or env.get("MOTION_MODE", "full")
+    if mode not in ("full", "hands"):
+        raise ValueError(f"MOTION_MODE must be full or hands, not {mode!r}")
+    demo = mode == "hands"
     origins = _env_origins() if allowed_origins is None else allowed_origins
-    max_sessions = max_sessions or int(env.get("MAX_SESSIONS", "4"))
-    session_seconds = session_seconds or float(env.get("SESSION_SECONDS", "180"))
+    max_sessions = max_sessions or int(env.get("MAX_SESSIONS", "2" if demo else "4"))
+    session_seconds = session_seconds or float(env.get("SESSION_SECONDS", "60" if demo else "180"))
     model_path = model_path or Path(env.get("MOTION_MODEL", ROOT / "models" / "yolox_nano.onnx"))
-    sessions = Sessions(max_sessions)
-    labels_available = YoloxLabeller.load(model_path) is not None
+    hand_model_path = hand_model_path or Path(env.get("HAND_MODEL", ROOT / "weights" / "hand.onnx"))
+    sessions = Sessions(max_sessions, per_client=1 if demo else PER_CLIENT)
+    labels_available = not demo and YoloxLabeller.load(model_path) is not None
+    hands_available = HandDetector.load(hand_model_path) is not None
+    if demo and not hands_available:
+        raise RuntimeError(f"MOTION_MODE=hands needs the hand model at {hand_model_path}")
     cv2.setNumThreads(1)  # a few sessions on a small box: don't oversubscribe the CPU
 
     app = FastAPI(title="motion-capture", docs_url=None, redoc_url=None)
@@ -220,8 +262,8 @@ def create_app(
         return response
 
     @app.get("/healthz")
-    def healthz() -> dict[str, bool]:
-        return {"ok": True, "labels": labels_available}
+    def healthz() -> dict[str, object]:
+        return {"ok": True, "mode": mode, "labels": labels_available, "hands": hands_available}
 
     @app.websocket("/ws")
     async def ws(socket: WebSocket) -> None:
@@ -239,18 +281,30 @@ def create_app(
         finally:
             sessions.leave(client)
 
+    def open_session() -> Session:
+        """Each session loads its own networks: cv2.dnn.Net is not safe to share across
+        threads, and both models are small enough to load in tens of milliseconds."""
+        engines: dict[str, Engine] = {}
+        if not demo:
+            engines["motion"] = Pipeline(
+                YoloxLabeller.load(model_path) if labels_available else None
+            )
+        if hands_available:
+            detector = HandDetector.load(hand_model_path)
+            if detector is not None:
+                engines["hands"] = HandPipeline(detector)
+        return Session(engines, "hands" if demo else "motion")
+
     async def run_session(socket: WebSocket) -> None:
-        # Each session loads its own network: cv2.dnn.Net is not safe to share across
-        # threads, and at ~3.6 MB it loads in tens of milliseconds.
-        labeller = (
-            await asyncio.to_thread(YoloxLabeller.load, model_path) if labels_available else None
-        )
-        pipeline = Pipeline(labeller)
-        s = pipeline.settings
+        session = await asyncio.to_thread(open_session)
+        s = session.motion.settings if session.motion else HandPipeline.settings_default()
         await socket.send_json(
             {
                 "type": "hello",
-                "labels": labeller is not None,
+                "mode": mode,
+                "detectors": sorted(session.engines),
+                "detector": session.active,
+                "labels": labels_available,
                 "maxSeconds": session_seconds,
                 "settings": {
                     "threshold": s.threshold,
@@ -273,14 +327,18 @@ def create_app(
                         return
                     reply: Message | None
                     if msg.get("bytes") is not None:
-                        reply = await asyncio.to_thread(handle_frame, pipeline, msg["bytes"])
+                        reply = await asyncio.to_thread(handle_frame, session.engine, msg["bytes"])
                     else:
-                        reply = apply_settings(pipeline, msg.get("text") or "")
+                        reply = apply_settings(session, msg.get("text") or "")
                     if reply is not None:
                         await socket.send_json(reply)
         except TimeoutError:
-            minutes = round(session_seconds / 60)
-            ended = f"The {minutes}-minute demo ended. Press Start to run it again."
+            length = (
+                f"{round(session_seconds)}-second"
+                if session_seconds < 120
+                else f"{round(session_seconds / 60)}-minute"
+            )
+            ended = f"The {length} demo ended. Press Start to run it again."
             await send_and_close(socket, {"type": "expired", "message": ended}, 1000)
         except WebSocketDisconnect:
             return

@@ -67,14 +67,23 @@ jobs:
           tags: motion-capture:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Start the container and check /healthz (the model must load)
+      - name: Full mode starts and loads both models
         run: |
           docker run -d --name app -p 8000:8000 motion-capture:ci
           for i in $(seq 1 30); do
-            if curl -sf localhost:8000/healthz | tee /dev/stderr | grep -q '"labels":true'; then exit 0; fi
+            if curl -sf localhost:8000/healthz | tee /dev/stderr | grep -q '"labels":true,"hands":true'; then exit 0; fi
             sleep 1
           done
           docker logs app
+          exit 1
+      - name: The website demo (hands mode) starts with the hand model
+        run: |
+          docker run -d --name demo -p 8001:8000 -e MOTION_MODE=hands motion-capture:ci
+          for i in $(seq 1 30); do
+            if curl -sf localhost:8001/healthz | tee /dev/stderr | grep -q '"mode":"hands","labels":false,"hands":true'; then exit 0; fi
+            sleep 1
+          done
+          docker logs demo
           exit 1
 
   publish:

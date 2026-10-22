@@ -16,6 +16,8 @@ COPY --from=deps /app/.venv /app/.venv
 COPY motion ./motion
 COPY server.py ./
 COPY web ./web
+# HandNet, trained for this project (see train/); weights under the HaGRID licence.
+COPY weights ./weights
 RUN useradd --system --uid 10001 app && chmod 644 /app/models/yolox_nano.onnx
 USER app
 # OPENCV_IO_MAX_IMAGE_PIXELS backs up the server's own JPEG header check.

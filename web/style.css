@@ -130,6 +130,49 @@ button:focus-visible {
   color: var(--accent);
 }
 
+/* The motion sliders sit in the controls grid as if the wrapper were not there. */
+.motion-only {
+  display: contents;
+}
+
+.motion-only[hidden] {
+  display: none;
+}
+
+.switch {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  grid-column: 1 / -1;
+}
+
+.switch[hidden] {
+  display: none;
+}
+
+.switch legend {
+  float: left;
+  margin-right: 4px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+
+.switch label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  cursor: pointer;
+}
+
+.switch input {
+  accent-color: var(--accent);
+}
+
 .toggle {
   grid-auto-flow: column;
   justify-content: start;

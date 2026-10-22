@@ -1,0 +1,19 @@
+HandNet weights (weights/hand.onnx, weights/hand.json)
+
+These weights were trained on a subset of HaGRIDv2:
+https://github.com/hukenovs/hagrid
+
+  Nuzhdin, Nagaev, Sautin, Kapitanov, Kvanchiani. "HaGRIDv2: 1M Images for
+  Static and Dynamic Hand Gesture Recognition", arXiv:2412.01508, 2024.
+
+  Kapitanov, Kvanchiani, Nagaev, Kraynov, Makhliarchuk. "HaGRID -- HAnd
+  Gesture Recognition Image Dataset", WACV 2024, pp. 4572-4581.
+
+HaGRID is licensed under a variant of the Creative Commons
+Attribution-ShareAlike 4.0 International License:
+https://github.com/hukenovs/hagrid/blob/master/license/en_us.pdf
+
+Whether trained weights are "Adapted Material" of a dataset is not settled.
+To be safe, these weights are released under the same terms as HaGRID
+(attribution, share-alike). Everything else in this repository is MIT
+licensed; see ../LICENSE. No HaGRID images are included in this repository.

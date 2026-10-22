@@ -9,7 +9,9 @@
  *   velocity: px/s of the box centre x, y and of width, height (from the Kalman filter)
  * @typedef {{ kind: 'start' | 'end', at: number, duration: number | null }} MotionEvent
  * @typedef {{ threshold: number, minArea: number, identify: boolean }} Settings
- * @typedef {{ type: 'hello', labels: boolean, maxSeconds: number, settings: Settings,
+ * @typedef {'motion' | 'hands'} Detector
+ * @typedef {{ type: 'hello', mode: 'full' | 'hands', detectors: Detector[], detector: Detector,
+ *             labels: boolean, maxSeconds: number, settings: Settings,
  *             limits: { threshold: [number, number], minArea: [number, number] } }} Hello
  * @typedef {{ type: 'result', w: number, h: number, tracks: Track[], events: MotionEvent[] }} Result
  * @typedef {{ type: 'busy' | 'expired', message: string }} Notice
@@ -62,6 +64,8 @@ const ui = {
   minAreaOut: el('min-area-out', HTMLOutputElement),
   identify: el('identify', HTMLInputElement),
   events: el('events', HTMLOListElement),
+  detector: el('detector', HTMLFieldSetElement),
+  motionControls: el('motion-controls', HTMLDivElement),
 };
 
 const DEFAULT_NOTE = ui.message.textContent ?? '';
@@ -70,12 +74,15 @@ const frameCanvas = document.createElement('canvas');
 /** @type {{ ws: WebSocket | null, stream: MediaStream | null, inFlight: boolean,
  *           lastSend: number, capturedAt: number, latency: number, results: number[],
  *           timer: number, raf: number, lastTick: number, frame: { w: number, h: number },
- *           shown: Map<number, Shown>, touched: boolean, errors: number }} */
+ *           shown: Map<number, Shown>, touched: boolean, errors: number,
+ *           detector: Detector, endsAt: number }} */
 const state = {
   ws: null, stream: null, inFlight: false, lastSend: 0, capturedAt: 0, latency: 0,
   results: [], timer: 0, raf: 0, lastTick: 0, frame: { w: 1, h: 1 }, shown: new Map(),
   touched: false,
   errors: 0,
+  detector: 'motion',
+  endsAt: 0,
 };
 
 // ---- session ---------------------------------------------------------------
@@ -151,6 +158,12 @@ function onHello(hello) {
   ui.identify.disabled = !hello.labels;
   ui.identify.parentElement?.setAttribute(
     'title', hello.labels ? '' : 'The object model is not installed on this server.');
+  // Full mode offers a choice; the website demo is hands only.
+  state.detector = hello.detector;
+  ui.detector.hidden = hello.detectors.length < 2;
+  for (const radio of ui.detector.querySelectorAll('input')) radio.checked = radio.value === hello.detector;
+  showDetector();
+  state.endsAt = performance.now() + hello.maxSeconds * 1000;
   ui.cover.hidden = true;
   ui.stop.hidden = false;
   setStatus('Live', true);
@@ -167,11 +180,10 @@ function onResult(result) {
   state.results.push(now);
   const roundTrip = now - state.capturedAt;
   state.latency = state.latency ? state.latency * 0.8 + roundTrip * 0.2 : roundTrip;
-  setStatus(
-    `Live · ${state.results.length} fps · ${Math.round(state.latency)} ms · ` +
-      `${result.tracks.length} moving`,
-    true,
-  );
+  const n = result.tracks.length;
+  const what = state.detector === 'hands' ? `${n} hand${n === 1 ? '' : 's'}` : `${n} moving`;
+  const left = Math.max(0, Math.ceil((state.endsAt - now) / 1000));
+  setStatus(`Live · ${state.results.length} fps · ${Math.round(state.latency)} ms · ${what} · ${left} s`, true);
 
   state.errors = 0;
   state.frame = { w: result.w, h: result.h };
@@ -233,10 +245,25 @@ function showValues() {
   ui.minAreaOut.value = `${ui.minArea.value} px`;
 }
 
+/** Motion sliders only matter when tracking any motion. */
+function showDetector() {
+  ui.motionControls.hidden = state.detector === 'hands';
+}
+
+/** @param {Event} event */
+function onDetector(event) {
+  const input = /** @type {HTMLInputElement} */ (event.target);
+  state.detector = input.value === 'hands' ? 'hands' : 'motion';
+  state.shown.clear(); // different engine, different track IDs
+  showDetector();
+  sendSettings();
+}
+
 function sendSettings() {
   if (state.ws?.readyState !== WebSocket.OPEN) return;
   state.ws.send(JSON.stringify({
     type: 'settings',
+    detector: state.detector,
     threshold: Number(ui.threshold.value),
     minArea: Number(ui.minArea.value),
     identify: ui.identify.checked && !ui.identify.disabled,
@@ -377,8 +404,8 @@ function addEvent(event) {
   time.dateTime = at.toISOString();
   time.textContent = at.toLocaleTimeString();
   item.append(time, event.kind === 'start'
-    ? 'Motion started'
-    : `Motion ended · ${event.duration?.toFixed(1)} s`);
+    ? (state.detector === 'hands' ? 'Hand appeared' : 'Motion started')
+    : `${state.detector === 'hands' ? 'Hands gone' : 'Motion ended'} · ${event.duration?.toFixed(1)} s`);
   ui.events.prepend(item);
   while (ui.events.children.length > MAX_EVENTS) ui.events.lastElementChild?.remove();
 }
@@ -396,4 +423,5 @@ ui.stop.addEventListener('click', () => stop());
 ui.threshold.addEventListener('input', queueSettings);
 ui.minArea.addEventListener('input', queueSettings);
 ui.identify.addEventListener('change', sendSettings);
+ui.detector.addEventListener('change', onDetector);
 showValues();

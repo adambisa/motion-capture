@@ -19,12 +19,22 @@ def jpeg(frame: Image) -> bytes:
     return buf.tobytes()
 
 
-def client(max_sessions: int = 4, session_seconds: float = 30) -> TestClient:
+TINY_HANDS = Path(__file__).parent / "fixtures" / "hand_tiny.onnx"
+
+
+def client(
+    max_sessions: int | None = 4,
+    session_seconds: float | None = 30,
+    mode: str = "full",
+    hand_model: Path = Path("/nonexistent.onnx"),
+) -> TestClient:
     app = create_app(
         allowed_origins=frozenset({"https://portfolio.example"}),
         max_sessions=max_sessions,
         session_seconds=session_seconds,
         model_path=Path("/nonexistent.onnx"),
+        hand_model_path=hand_model,
+        mode=mode,
     )
     return TestClient(app)
 
@@ -156,3 +166,43 @@ def test_portrait_camera_frames_are_processed() -> None:
         reply = ws.receive_json()
     assert reply["type"] == "result"
     assert (reply["w"], reply["h"]) == (320, 569)
+
+
+def test_full_mode_switches_between_motion_and_hands() -> None:
+    with client(hand_model=TINY_HANDS).websocket_connect("/ws", headers=ORIGIN) as ws:
+        hello = ws.receive_json()
+        assert (hello["mode"], hello["detectors"], hello["detector"]) == (
+            "full",
+            ["hands", "motion"],
+            "motion",
+        )
+        ws.send_text('{"type":"settings","detector":"hands"}')
+        ws.send_bytes(jpeg(scene()))
+        reply = ws.receive_json()
+        assert reply["type"] == "result"
+        ws.send_text('{"type":"settings","detector":"faces"}')
+        assert ws.receive_json()["code"] == "bad_settings"
+
+
+def test_full_mode_without_hand_model_offers_motion_only() -> None:
+    with client().websocket_connect("/ws", headers=ORIGIN) as ws:
+        assert ws.receive_json()["detectors"] == ["motion"]
+
+
+def test_hands_demo_is_hands_only_and_short() -> None:
+    c = client(max_sessions=None, session_seconds=None, mode="hands", hand_model=TINY_HANDS)
+    with c.websocket_connect("/ws", headers=ORIGIN) as ws:
+        hello = ws.receive_json()
+        assert (hello["mode"], hello["detectors"], hello["labels"]) == ("hands", ["hands"], False)
+        assert hello["maxSeconds"] == 60
+        ws.send_text('{"type":"settings","detector":"motion"}')
+        assert ws.receive_json()["code"] == "bad_settings"
+        with c.websocket_connect("/ws", headers=ORIGIN) as second:  # one per visitor
+            assert second.receive_json()["type"] == "busy"
+    health = c.get("/healthz").json()
+    assert (health["mode"], health["hands"]) == ("hands", True)
+
+
+def test_hands_demo_refuses_to_start_without_the_model() -> None:
+    with pytest.raises(RuntimeError, match="hand model"):
+        client(mode="hands")

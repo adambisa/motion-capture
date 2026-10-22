@@ -7,3 +7,7 @@ The weights are not included in this repository; they are fetched at build time.
 web/fonts/sometype-mono-latin.woff2 is Sometype Mono, designed by Ryoichi Tsunekawa.
 Copyright 2018 The Sometype Mono Project Authors (https://github.com/googlefonts/sometype-mono),
 licensed under the SIL Open Font License 1.1: https://openfontlicense.org
+
+weights/hand.onnx is HandNet, trained for this project on a subset of HaGRIDv2
+(https://github.com/hukenovs/hagrid) and released under HaGRID's share-alike
+licence; see weights/LICENSE.

@@ -27,6 +27,12 @@
       </div>
 
       <section class="controls" aria-label="Detector settings">
+        <fieldset class="switch" id="detector" hidden>
+          <legend>Track</legend>
+          <label><input type="radio" name="detector" value="motion" checked /> <span>Any motion</span></label>
+          <label><input type="radio" name="detector" value="hands" /> <span>Hands</span></label>
+        </fieldset>
+        <div class="motion-only" id="motion-controls">
         <label>
           <span>Sensitivity threshold <output id="threshold-out"></output></span>
           <input type="range" id="threshold" min="5" max="100" value="25" />
@@ -39,6 +45,7 @@
           <input type="checkbox" id="identify" />
           <span>Identify objects <small>(YOLOX-nano)</small></span>
         </label>
+        </div>
         <button type="button" class="stop" id="stop" hidden>Stop</button>
       </section>
 

@@ -1,11 +1,19 @@
-"""One camera stream, frame by frame: background -> blobs -> tracks -> colour, labels, events."""
+"""One camera stream, frame by frame.
+
+Pipeline:      background -> blobs -> tracks -> colour, labels, events (any motion)
+HandPipeline:  HandNet -> tracks -> events (hands only)
+"""
 
 from dataclasses import dataclass
+from typing import Protocol
+
+import numpy as np
 
 from motion.background import Background, find_blobs, to_gray
 from motion.colour import dominant_colour
 from motion.common import Box, Image
 from motion.events import MotionEvent, MotionEvents
+from motion.hands import Contract, HandBox
 from motion.objects import Labeller
 from motion.tracker import Track, Tracker
 
@@ -127,3 +135,59 @@ class Pipeline:
             if min(w, h) < p.min_side:
                 continue
             track.label = self.labeller.label(crop) or track.label
+
+
+class HandDetector(Protocol):
+    contract: Contract
+
+    def detect(self, frame: Image, threshold: float | None = None) -> list[HandBox]: ...
+
+
+class HandPipeline:
+    """Hands only: HandNet finds them, the Kalman tracker follows them.
+
+    Two thresholds: a detection needs `spawn` confidence to start a track but
+    only `keep` to continue one, so a hand that dims for a frame keeps its ID
+    while a one-off false detection never becomes a track. A track also has to
+    be seen twice before it is shown. Hands never get a colour.
+    """
+
+    MIN_AGE = 2
+
+    @staticmethod
+    def settings_default() -> Settings:
+        """Hands ignore the motion settings; the hello message still reports them."""
+        return Settings()
+
+    def __init__(self, detector: HandDetector) -> None:
+        self.detector = detector
+        self.settings = Settings()
+        c = detector.contract
+        noise = (
+            np.diag(np.square(np.array(c.noise, np.float32))).astype(np.float32)
+            if c.noise is not None
+            else None
+        )
+        self._tracker = (
+            Tracker(max_missed=4, max_dist=80.0, measurement_noise=noise)
+            if noise is not None
+            else Tracker(max_missed=4, max_dist=80.0)
+        )
+        self._events = MotionEvents()
+        self._shape: tuple[int, ...] | None = None
+
+    def process(self, frame: Image, now: float) -> FrameResult:
+        if frame.shape != self._shape:
+            self._shape = frame.shape
+            self._tracker.reset()
+        c = self.detector.contract
+        hands = self.detector.detect(frame, c.keep)
+        bounds = (frame.shape[1], frame.shape[0])
+        tracks = self._tracker.update(
+            [h.box for h in hands], now, bounds, [h.score >= c.spawn for h in hands]
+        )
+        shown = [t for t in tracks if t.age >= self.MIN_AGE]
+        for t in shown:
+            t.label, t.colour = "hand", None
+        event = self._events.update(bool(shown), now)
+        return FrameResult(frame.shape[1], frame.shape[0], shown, [event] if event else [])
