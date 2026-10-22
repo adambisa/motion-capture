@@ -1,0 +1,33 @@
+{
+  "height": 192,
+  "width": 256,
+  "spawn": 0.5,
+  "keep": 0.25,
+  "noise": [
+    1.18,
+    1.26,
+    2.02,
+    2.68
+  ],
+  "model": "HandNet",
+  "trained_on": "HaGRIDv2 subset, see train/README.md",
+  "licence": "weights/LICENSE (HaGRID share-alike terms)",
+  "run": "base",
+  "epoch": 60,
+  "width_multiplier": 1.0,
+  "params": 288821,
+  "macs": 90845184,
+  "torch_vs_cv2_max_diff": 3.1e-06,
+  "val": {
+    "images": 3200,
+    "hands": 3913,
+    "ap50": 0.6737854781747954,
+    "ap50_95": 0.2519211741270599,
+    "threshold": 0.5,
+    "precision": 0.9201741654571843,
+    "recall": 0.4860720674674163,
+    "f1": 0.6361204013377927
+  },
+  "git": "afa1cb8",
+  "released": "2026-10-22"
+}

@@ -20,3 +20,17 @@ Short notes on what was tried and what happened, in order. Numbers are from
   recall 0.72, size loss stalled at 0.14. For a network this small, making every nearby cell
   predict the offset to the centre from its own position costs more than the extra signal gives.
 - **Decision:** keep centre-cell regression; a real run has ~20x the steps.
+
+## 2026-10-22 · Full run and release (base, 60 epochs, ~26k images)
+
+- **Val (3,200 images, through ONNX + cv2.dnn):** AP50 0.674, AP50:95 0.252, precision 0.92 and
+  recall 0.49 at the release threshold. Reference on the same frames: MediaPipe AP50 0.80
+  [0.77-0.84], skin colour 0.003.
+- **Released thresholds:** start a track at 0.50 (lowest score with val precision >= 0.90), keep it at 0.25.
+- **Measured box wobble on a still hand** (std, px): centre 1.2 / 1.3, size 2.0 / 2.7. Now the
+  Kalman measurement noise.
+- **First live test (owner, portrait webcam):** misses hands, some boxes on the wrong things, flicker.
+  On val, portrait images score lower than landscape (AP50 0.66 [0.62-0.70] vs 0.72 [0.64-0.80];
+  intervals overlap). A portrait frame is letterboxed into the landscape canvas at 0.6 scale,
+  shrinking hands. Next: a portrait export from the same weights, then numbers-only logging from a
+  live session. Ablations and the one-time test-set evaluation not run yet.
