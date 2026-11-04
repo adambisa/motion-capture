@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1.7
-FROM python:3.13-slim-bookworm AS deps
+FROM python:3.15-slim-bookworm AS deps
 COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /usr/local/bin/uv
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 COPY pyproject.toml uv.lock .python-version ./
 RUN uv sync --frozen --no-dev --no-install-project
 
-FROM python:3.13-slim-bookworm
+FROM python:3.15-slim-bookworm
 WORKDIR /app
 # YOLOX-nano, Apache-2.0, from the official Megvii release (pinned by checksum).
 ADD --checksum=sha256:c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d \
