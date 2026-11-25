@@ -5,7 +5,7 @@ description = "Training, evaluation and export for the motion-capture hand detec
 requires-python = ">=3.13"
 dependencies = [
     "matplotlib==3.11.2",
-    "numpy==2.5.4",
+    "numpy==2.5.5",
     "onnx==1.23.2",
     "opencv-python-headless==5.0.0.93",
     "pycocotools==2.0.11",
